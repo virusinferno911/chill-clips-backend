@@ -69,3 +69,14 @@ jobs:
           echo "Run ID Tag: ${{ github.run_id }}"
           echo "Latest Tag: latest"
           echo "========================================"
+
+      # Step 8 — Automatically deploy to Contabo VPS via SSH
+      - name: Deploy to Contabo VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd ~
+            ./refresh_backend.sh
