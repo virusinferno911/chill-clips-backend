@@ -1,0 +1,71 @@
+name: Build and Push to AWS ECR
+
+# This pipeline runs every time code is pushed to the main branch
+on:
+  push:
+    branches:
+      - main
+
+# Environment variables available to all jobs
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY_URI: ${{ secrets.ECR_REPOSITORY_URI }}
+
+jobs:
+  build-and-push:
+    name: Build Docker Image and Push to ECR
+    runs-on: ubuntu-latest   # GitHub provides this temporary Linux server for free
+
+    steps:
+      # Step 1 — Checkout the code from GitHub
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      # Step 2 — Recreate the application.properties file from the GitHub Secret
+      # The file is excluded from the repo via .gitignore
+      # This step injects it into the runner just before the Docker build
+      - name: Create application.properties from secret
+        run: |
+          mkdir -p src/main/resources
+          echo "${{ secrets.APP_PROPERTIES }}" > src/main/resources/application.properties
+          echo "application.properties created successfully"
+
+      # Step 3 — Configure AWS credentials using the IAM user secrets
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Step 4 — Log into AWS ECR so Docker can push to it
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Step 5 — Build the Docker image
+      # We tag it with the GitHub run ID so every build has a unique tag
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.ECR_REPOSITORY_URI }}:${{ github.run_id }} \
+            -t ${{ env.ECR_REPOSITORY_URI }}:latest \
+            .
+          echo "Docker image built with tag: ${{ github.run_id }}"
+
+      # Step 6 — Push both tags to AWS ECR
+      - name: Push Docker image to ECR
+        run: |
+          docker push ${{ env.ECR_REPOSITORY_URI }}:${{ github.run_id }}
+          docker push ${{ env.ECR_REPOSITORY_URI }}:latest
+          echo "Image pushed successfully to ECR"
+
+      # Step 7 — Print a success summary
+      - name: Pipeline complete
+        run: |
+          echo "========================================"
+          echo "CI Pipeline Completed Successfully"
+          echo "Image: ${{ env.ECR_REPOSITORY_URI }}"
+          echo "Run ID Tag: ${{ github.run_id }}"
+          echo "Latest Tag: latest"
+          echo "========================================"
